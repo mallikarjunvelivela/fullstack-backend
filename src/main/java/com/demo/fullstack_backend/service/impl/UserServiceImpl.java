@@ -1,0 +1,205 @@
+package com.demo.fullstack_backend.service.impl;
+
+import com.demo.fullstack_backend.dto.UserDto;
+import com.demo.fullstack_backend.exception.UserAlreadyExists;
+import com.demo.fullstack_backend.exception.UserNotFoundException;
+import com.demo.fullstack_backend.model.User;
+import com.demo.fullstack_backend.payload.LoginResponse;
+import com.demo.fullstack_backend.repository.UserRepository;
+import com.demo.fullstack_backend.security.JwtTokenProvider;
+import com.demo.fullstack_backend.service.UserService;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.mail.SimpleMailMessage;
+import org.springframework.mail.javamail.JavaMailSender;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
+import java.util.Random;
+import java.util.stream.Collectors;
+
+@Service
+public class UserServiceImpl implements UserService {
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private JavaMailSender mailSender;
+
+    @Autowired
+    private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private JwtTokenProvider tokenProvider;
+
+    @Override
+    public UserDto saveUser(UserDto userDto) {
+        List<String> existingFields = new ArrayList<>();
+        if (!userRepository.findByUsername(userDto.getUsername()).isEmpty()) {
+            existingFields.add("Username");
+        }
+        if (!userRepository.findByEmail(userDto.getEmail()).isEmpty()) {
+            existingFields.add("Email");
+        }
+        if (!userRepository.findByMobileNumber(userDto.getMobileNumber()).isEmpty()) {
+            existingFields.add("Mobile number");
+        }
+
+        if (!existingFields.isEmpty()) {
+            throw new UserAlreadyExists(String.join(", ", existingFields) + " already exists");
+        }
+        
+        User user = new User();
+        BeanUtils.copyProperties(userDto, user);
+        user.setPassword(passwordEncoder.encode(userDto.getPassword()));
+        
+        User savedUser = userRepository.save(user);
+        UserDto savedUserDto = new UserDto();
+        BeanUtils.copyProperties(savedUser, savedUserDto);
+        return savedUserDto;
+    }
+
+    @Override
+    public List<UserDto> getAllUsers() {
+        return userRepository.findAll().stream().map(user -> {
+            UserDto userDto = new UserDto();
+            BeanUtils.copyProperties(user, userDto);
+            return userDto;
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    public UserDto getUserById(Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+        UserDto userDto = new UserDto();
+        BeanUtils.copyProperties(user, userDto);
+        return userDto;
+    }
+
+    @Override
+    public UserDto updateUser(UserDto userDto, Long id) {
+        User user = userRepository.findById(id)
+                .orElseThrow(() -> new UserNotFoundException(id));
+
+        user.setUsername(userDto.getUsername());
+        user.setName(userDto.getName());
+        user.setEmail(userDto.getEmail());
+        user.setMobileNumber(userDto.getMobileNumber());
+        user.setDob(userDto.getDob());
+        user.setGender(userDto.getGender());
+        if (userDto.getPassword() != null && !userDto.getPassword().isEmpty()) {
+            user.setPassword(passwordEncoder.encode(userDto.getPassword()));
+        }
+        
+        User updatedUser = userRepository.save(user);
+        UserDto updatedUserDto = new UserDto();
+        BeanUtils.copyProperties(updatedUser, updatedUserDto);
+        return updatedUserDto;
+    }
+
+    @Override
+    public String deleteUser(Long id) {
+        if (!userRepository.existsById(id)) {
+            throw new UserNotFoundException(id);
+        }
+        userRepository.deleteById(id);
+        return "User with id " + id + " has been deleted success.";
+    }
+
+    @Override
+    public LoginResponse loginUser(String usernameOrEmail, String password) {
+        List<User> users = userRepository.findByUsernameOrEmail(usernameOrEmail.trim(), usernameOrEmail.trim());
+        if (users.size() == 1) {
+            User user = users.get(0);
+            if (passwordEncoder.matches(password.trim(), user.getPassword())) {
+                String token = tokenProvider.generateToken(user.getUsername());
+                UserDto userDto = new UserDto();
+                BeanUtils.copyProperties(user, userDto);
+                return new LoginResponse(token, userDto);
+            } else {
+                throw new RuntimeException("Invalid credentials: Incorrect password.");
+            }
+        } else if (users.isEmpty()) {
+            throw new RuntimeException("Invalid credentials: User not found.");
+        } else {
+            throw new RuntimeException("Invalid credentials: Ambiguous user. Multiple accounts found.");
+        }
+    }
+
+    @Override
+    public String forgotPassword(String email) {
+        if (email == null || email.trim().isEmpty()) {
+            return "Email cannot be empty.";
+        }
+
+        Optional<User> userOptional = userRepository.findFirstByEmailOrMobileNumber(email, email);
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            String otp = generateOtp();
+            user.setOtp(otp);
+            userRepository.save(user);
+            sendOtpToEmail(user.getEmail(), otp);
+            return "OTP sent to " + user.getEmail();
+        } else {
+            return "User not found with email: " + email;
+        }
+    }
+
+    @Override
+    public String verifyOtp(String email, String otp) {
+        if (email == null || email.trim().isEmpty() || otp == null || otp.trim().isEmpty()) {
+            return "Email and OTP cannot be empty.";
+        }
+
+        Optional<User> userOptional = userRepository.findFirstByEmailOrMobileNumber(email, email);
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            if (otp.equals(user.getOtp())) {
+                user.setOtp(null); // Clear OTP after successful verification
+                userRepository.save(user);
+                return "OTP verified successfully.";
+            } else {
+                return "Invalid OTP.";
+            }
+        } else {
+            return "User not found with email: " + email;
+        }
+    }
+
+    @Override
+    public String resetPassword(String email, String newPassword) {
+        if (email == null || email.trim().isEmpty() || newPassword == null || newPassword.trim().isEmpty()) {
+            return "Email and new password cannot be empty.";
+        }
+
+        Optional<User> userOptional = userRepository.findFirstByEmailOrMobileNumber(email, email);
+
+        if (userOptional.isPresent()) {
+            User user = userOptional.get();
+            user.setPassword(passwordEncoder.encode(newPassword));
+            userRepository.save(user);
+            return "Password reset successfully.";
+        } else {
+            return "User not found with email: " + email;
+        }
+    }
+
+    private String generateOtp() {
+        return String.format("%06d", new Random().nextInt(999999));
+    }
+
+    private void sendOtpToEmail(String toEmail, String otp) {
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setTo(toEmail);
+        message.setSubject("Your OTP for Password Reset");
+        message.setText("Your OTP is: " + otp);
+        mailSender.send(message);
+    }
+}
