@@ -5,8 +5,8 @@ COPY . .
 RUN gradle bootJar
 
 # Package stage
-FROM eclipse-temurin:21-jre
+FROM openjdk:21-slim
 WORKDIR /app
 COPY --from=build /app/build/libs/*.jar app.jar
 EXPOSE 9009
-ENTRYPOINT ["sh", "-c", "java -jar app.jar --server.port=${PORT:-9009}"]
+ENTRYPOINT ["java", "-jar", "app.jar"]
