@@ -1,17 +1,22 @@
 package com.demo.fullstack_backend.controller;
 
+import java.util.List;
+import java.util.Map;
+
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RestController;
+
 import com.demo.fullstack_backend.dto.UserDto;
 import com.demo.fullstack_backend.payload.LoginResponse;
 import com.demo.fullstack_backend.security.JwtTokenProvider;
 import com.demo.fullstack_backend.service.UserService;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
-
-import java.util.List;
-import java.util.Map;
 
 @RestController
 public class UserController {
@@ -69,13 +74,13 @@ public class UserController {
     }
 
     @GetMapping("/user/{id}")
-    UserDto getUserById(@PathVariable Long id){
-        return userService.getUserById(id);
+    public ResponseEntity<UserDto> getUserById(@PathVariable Long id){
+        return ResponseEntity.ok(userService.getUserById(id));
     }
 
     @PutMapping("/user/{id}")
-    UserDto updateUser(@RequestBody UserDto newUser, @PathVariable Long id){
-        return userService.updateUser(newUser, id);
+    public ResponseEntity<UserDto> updateUser(@RequestBody UserDto newUser, @PathVariable Long id){
+        return ResponseEntity.ok(userService.updateUser(newUser, id));
     }
 
     @PostMapping("/user")
@@ -86,17 +91,5 @@ public class UserController {
     @DeleteMapping("/user/{id}")
     String deleteUser(@PathVariable Long id){
         return userService.deleteUser(id);
-    }
-
-    @PostMapping("/user/{id}/image")
-    public ResponseEntity<UserDto> uploadUserImage(@PathVariable Long id, @RequestParam("image") MultipartFile file) {
-        UserDto updatedUser = userService.uploadImage(id, file);
-        return ResponseEntity.ok(updatedUser);
-    }
-
-    @GetMapping("/user/{id}/image")
-    public ResponseEntity<byte[]> getUserImage(@PathVariable Long id) {
-        byte[] imageData = userService.getUserImage(id);
-        return ResponseEntity.ok().contentType(MediaType.IMAGE_JPEG).body(imageData);
     }
 }

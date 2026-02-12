@@ -1,15 +1,9 @@
 package com.demo.fullstack_backend.service.impl;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Random;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.beans.BeanUtils;
@@ -18,7 +12,6 @@ import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.web.multipart.MultipartFile;
 
 import com.demo.fullstack_backend.dto.UserDto;
 import com.demo.fullstack_backend.exception.UserAlreadyExists;
@@ -68,6 +61,7 @@ public class UserServiceImpl implements UserService {
         User savedUser = userRepository.save(user);
         UserDto savedUserDto = new UserDto();
         BeanUtils.copyProperties(savedUser, savedUserDto);
+        savedUserDto.setPassword(null);
         return savedUserDto;
     }
 
@@ -76,6 +70,7 @@ public class UserServiceImpl implements UserService {
         return userRepository.findAll().stream().map(user -> {
             UserDto userDto = new UserDto();
             BeanUtils.copyProperties(user, userDto);
+            userDto.setPassword(null);
             return userDto;
         }).collect(Collectors.toList());
     }
@@ -86,6 +81,7 @@ public class UserServiceImpl implements UserService {
                 .orElseThrow(() -> new UserNotFoundException(id));
         UserDto userDto = new UserDto();
         BeanUtils.copyProperties(user, userDto);
+        userDto.setPassword(null);
         return userDto;
     }
 
@@ -100,6 +96,7 @@ public class UserServiceImpl implements UserService {
         user.setMobileNumber(userDto.getMobileNumber());
         user.setDob(userDto.getDob());
         user.setGender(userDto.getGender());
+        user.setImage(userDto.getImage());
         if (userDto.getPassword() != null && !userDto.getPassword().isEmpty()) {
             user.setPassword(passwordEncoder.encode(userDto.getPassword()));
         }
@@ -107,6 +104,7 @@ public class UserServiceImpl implements UserService {
         User updatedUser = userRepository.save(user);
         UserDto updatedUserDto = new UserDto();
         BeanUtils.copyProperties(updatedUser, updatedUserDto);
+        updatedUserDto.setPassword(null);
         return updatedUserDto;
     }
 
@@ -128,6 +126,7 @@ public class UserServiceImpl implements UserService {
                 String token = tokenProvider.generateToken(user.getUsername());
                 UserDto userDto = new UserDto();
                 BeanUtils.copyProperties(user, userDto);
+                userDto.setPassword(null);
                 return new LoginResponse(token, userDto);
             } else {
                 throw new RuntimeException("Invalid credentials: Incorrect password.");
@@ -196,62 +195,6 @@ public class UserServiceImpl implements UserService {
             return "Password reset successfully.";
         } else {
             return "User not found with email: " + email;
-        }
-    }
-
-    @Override
-    public UserDto uploadImage(Long id, MultipartFile file) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new UserNotFoundException(id));
-
-        if (file.isEmpty()) {
-            throw new RuntimeException("Cannot upload empty file");
-        }
-
-        try {
-            // Define the directory where images will be stored
-            String uploadDir = System.getProperty("user.dir") + "/uploads/user-images/";
-            Path uploadPath = Paths.get(uploadDir);
-
-            if (!Files.exists(uploadPath)) {
-                Files.createDirectories(uploadPath);
-            }
-
-            String originalFilename = file.getOriginalFilename();
-            String fileExtension = originalFilename != null && originalFilename.contains(".") ? originalFilename.substring(originalFilename.lastIndexOf(".")) : "";
-            String fileName = id + "_" + UUID.randomUUID().toString() + fileExtension;
-
-            Path filePath = uploadPath.resolve(fileName);
-            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
-
-            user.setImage(fileName);
-            User updatedUser = userRepository.save(user);
-            UserDto userDto = new UserDto();
-            BeanUtils.copyProperties(updatedUser, userDto);
-            return userDto;
-        } catch (Exception e) {
-            e.printStackTrace();
-            throw new RuntimeException("Could not store the file. Error: " + e.getMessage());
-        }
-    }
-
-    @Override
-    public byte[] getUserImage(Long id) {
-        User user = userRepository.findById(id)
-                .orElseThrow(() -> new UserNotFoundException(id));
-
-        String imageName = user.getImage();
-        if (imageName == null || imageName.isEmpty()) {
-            throw new RuntimeException("User has no image assigned.");
-        }
-
-        String uploadDir = System.getProperty("user.dir") + "/uploads/user-images/";
-        Path path = Paths.get(uploadDir + imageName);
-
-        try {
-            return Files.readAllBytes(path);
-        } catch (IOException e) {
-            throw new RuntimeException("Could not read the file. Error: " + e.getMessage());
         }
     }
 
